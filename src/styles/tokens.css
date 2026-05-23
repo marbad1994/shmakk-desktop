@@ -1,0 +1,73 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   shmakk · design tokens
+   Calm dev-tool aesthetic. Warm amber accent, neutral graphite surfaces.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* Surfaces — warm-neutral graphite */
+  --bg-primary: #111114;
+  --bg-secondary: #17171b;
+  --bg-elevated: #1d1d22;
+  --bg-hover: #25252c;
+  --bg-input: #19191e;
+  --bg-sidebar: #0c0c0f;
+  --bg-sidebar-hover: #18181d;
+  --bg-sidebar-active: #1f1f25;
+  --bg-user-msg: #22222a;
+  --bg-tool-card: #17171c;
+  --bg-code: #0a0a0e;
+  --bg-code-header: #121216;
+
+  /* Borders */
+  --border: #2a2a32;
+  --border-light: #1e1e24;
+  --border-input: #303039;
+
+  /* Text */
+  --text-primary: #ebebef;
+  --text-secondary: #9a9aa6;
+  --text-muted: #686874;
+
+  /* Accent — warm amber/tan */
+  --accent: #d4a373;
+  --accent-hover: #e0b287;
+  --accent-dark: #a07a51;
+  --accent-on: #2a1d0e;
+  --accent-subtle: rgba(212, 163, 115, 0.1);
+  --accent-glow: rgba(212, 163, 115, 0.2);
+
+  /* Semantic */
+  --green: #6fc88a;
+  --red: #ef6b6b;
+  --yellow: #e9b86b;
+  --blue: #6f9fd8;
+  --purple: #a18bd8;
+
+  --green-subtle: rgba(111, 200, 138, 0.1);
+  --red-subtle: rgba(239, 107, 107, 0.1);
+  --yellow-subtle: rgba(233, 184, 107, 0.1);
+  --blue-subtle: rgba(111, 159, 216, 0.1);
+
+  /* Typography */
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: monospace;
+
+  /* Sizing */
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 14px;
+  --transition: 0.16s ease;
+
+  /* Spacing */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 10px;
+  --space-4: 12px;
+  --space-5: 14px;
+  --space-6: 16px;
+  --space-7: 20px;
+  --space-8: 24px;
+  --space-9: 32px;
+  --space-10: 40px;
+}

@@ -1,0 +1,184 @@
+.wf-app {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
+.wf-list {
+  width: 300px;
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-light);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.wf-list {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+}
+
+.wf-list-item {
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: var(--transition);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wf-list-item:hover {
+  background: var(--bg-sidebar-hover);
+}
+
+.wf-list-item-active {
+  background: var(--bg-sidebar-active);
+}
+
+.wf-list-item-name {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.wf-list-item-steps {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.wf-detail {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.wf-steps {
+  flex: 1;
+  overflow: auto;
+  padding: 0 28px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.wf-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-primary);
+  transition: var(--transition);
+}
+
+.wf-step:hover {
+  border-color: var(--border-input);
+}
+
+.wf-step-done {
+  opacity: 0.55;
+}
+
+.wf-step-type-icon {
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+}
+
+.wf-step-name {
+  flex: 1;
+}
+
+.wf-step-type {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  background: var(--bg-elevated);
+  padding: 1px 7px;
+  border-radius: 8px;
+}
+
+.wf-step-log-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.wf-step-log-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* ── Execution log ── */
+
+.wf-log {
+  border-top: 1px solid var(--border);
+  background: var(--bg-code);
+  flex-shrink: 0;
+  max-height: 240px;
+  display: flex;
+  flex-direction: column;
+}
+
+.wf-log-header {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-light);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.wf-log-step-name {
+  flex: 1;
+}
+
+.wf-log-time {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.wf-log-close {
+  font-size: 10px;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.wf-log-close:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.wf-log-content {
+  flex: 1;
+  padding: 12px 16px;
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+  overflow: auto;
+  font-family: var(--font-mono);
+  white-space: pre-wrap;
+}

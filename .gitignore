@@ -1,0 +1,10 @@
+PLAN.md
+.shmakk/
+.claude/
+makkgui/
+shmakk/
+*jpg
+node_modules/
+dist/
+dist-electron/
+mockups/

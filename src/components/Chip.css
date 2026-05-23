@@ -1,0 +1,33 @@
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  font-family: inherit;
+}
+
+button.chip {
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+button.chip:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+button.chip:active {
+  transform: scale(0.97);
+}
+
+.chip-active {
+  background: var(--accent-subtle);
+  border-color: var(--accent);
+  color: var(--accent);
+}

@@ -1,0 +1,103 @@
+/* ── Container ── */
+.shmakk-composer {
+  border-top: 1px solid var(--border-light);
+  padding: 16px 22px 20px;
+  background: var(--bg-primary);
+}
+.shmakk-composer-input {
+  background: var(--bg-input);
+  border: 1px solid var(--border-input);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  display: flex; flex-direction: column; gap: 10px;
+  transition: var(--transition);
+}
+.shmakk-composer-input:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-subtle);
+}
+.shmakk-composer-textarea {
+  background: transparent; border: none; outline: none;
+  color: var(--text-primary); font-family: inherit;
+  font-size: 13px; line-height: 1.5; resize: none;
+  width: 100%; min-height: 22px;
+}
+.shmakk-composer-textarea::placeholder { color: var(--text-muted); }
+.shmakk-composer-row { display: flex; gap: 8px; align-items: center; }
+.shmakk-composer-spacer { flex: 1; }
+.shmakk-composer-hint { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); }
+
+/* ── Send ── */
+.shmakk-send-btn {
+  width: 34px; height: 34px; border-radius: 50%;
+  background: var(--accent); color: var(--accent-on);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: var(--transition); border: none; flex-shrink: 0;
+}
+.shmakk-send-btn:hover:not(:disabled) { transform: scale(1.06); background: var(--accent-hover); }
+.shmakk-send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Stop ── */
+.shmakk-stop-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 14px; border-radius: var(--radius);
+  background: var(--red-subtle, rgba(239,107,107,0.12));
+  border: 1px solid var(--red, #ef6b6b); color: var(--red, #ef6b6b);
+  font-size: 12px; cursor: pointer; font-family: inherit; transition: var(--transition); flex-shrink: 0;
+}
+.shmakk-stop-btn:hover { background: rgba(239,107,107,0.22); }
+
+/* ── Model picker ── */
+.shmakk-model-pick { position: relative; flex-shrink: 0; }
+.shmakk-model-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; background: var(--bg-elevated);
+  border: 1px solid var(--border-light); border-radius: 12px;
+  color: var(--text-secondary); font-size: 11px;
+  cursor: pointer; font-family: inherit; transition: var(--transition);
+}
+.shmakk-model-btn:hover { background: var(--bg-hover); border-color: var(--border); }
+.shmakk-model-label { font-family: var(--font-mono); }
+.shmakk-model-drop {
+  position: absolute; bottom: calc(100% + 6px); left: 0; min-width: 180px;
+  background: var(--bg-elevated); border: 1px solid var(--border);
+  border-radius: var(--radius); box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+  z-index: 100; overflow: hidden; padding: 4px;
+}
+.shmakk-model-item {
+  display: flex; align-items: center; justify-content: space-between;
+  width: 100%; padding: 7px 12px; border: none;
+  background: transparent; color: var(--text-secondary);
+  font-size: 12px; cursor: pointer; font-family: inherit; border-radius: 4px;
+  transition: var(--transition);
+}
+.shmakk-model-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+.shmakk-model-item-active { background: var(--accent-subtle); color: var(--accent); }
+.shmakk-model-type { color: var(--text-muted); font-size: 10px; font-family: var(--font-mono); }
+
+/* ── Voice ── */
+.shmakk-voice-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  border: 1px solid var(--border-light); background: var(--bg-elevated);
+  color: var(--text-secondary); cursor: pointer; transition: var(--transition); flex-shrink: 0;
+}
+.shmakk-voice-btn:hover { background: var(--bg-hover); border-color: var(--border); }
+.shmakk-voice-active { background: rgba(239,107,107,0.12); border-color: #ef6b6b; color: #ef6b6b; animation: composer-voice-pulse 1.2s ease-in-out infinite; }
+@keyframes composer-voice-pulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,107,107,0.4); } 50% { box-shadow: 0 0 0 6px rgba(239,107,107,0.12); } }
+
+/* ── STS toggle ── */
+.shmakk-sts-btn {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; background: var(--bg-elevated);
+  border: 1px solid var(--border-light); border-radius: 12px;
+  cursor: pointer; transition: var(--transition); font-family: inherit; flex-shrink: 0;
+}
+.shmakk-sts-btn:hover { background: var(--bg-hover); border-color: var(--border); }
+.shmakk-sts-label { font-size: 10px; color: var(--text-muted); font-family: var(--font-mono); text-transform: uppercase; }
+.shmakk-sts-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--text-muted); transition: all 0.3s ease; }
+.shmakk-sts-active.shmakk-sts-listening .shmakk-sts-dot { background: #4ade80; animation: composer-sts-pulse 1.2s ease-in-out infinite; }
+.shmakk-sts-active.shmakk-sts-thinking .shmakk-sts-dot { background: var(--accent); animation: composer-sts-pulse 0.8s ease-in-out infinite; }
+.shmakk-sts-active.shmakk-sts-speaking .shmakk-sts-dot { background: #60a5fa; animation: composer-sts-pulse 1s ease-in-out infinite; }
+.shmakk-sts-active .shmakk-sts-label { color: var(--text-primary); }
+@keyframes composer-sts-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }

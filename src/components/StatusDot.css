@@ -1,0 +1,24 @@
+.status-dot {
+  display: inline-block;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-online  {
+  background: var(--green);
+  animation: dot-pulse 1.6s ease-in-out infinite;
+}
+
+.dot-offline { background: var(--text-muted); }
+.dot-busy    { background: var(--yellow); animation: dot-pulse 0.8s ease-in-out infinite; }
+.dot-idle    { background: var(--yellow); }
+.dot-accent  { background: var(--accent); }
+
+@keyframes dot-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.35; }
+}
+.dot-offline { background: var(--text-muted); }
+.dot-busy    { background: var(--yellow); }
+.dot-idle    { background: var(--yellow); }
+.dot-accent  { background: var(--accent); }
