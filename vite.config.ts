@@ -3,6 +3,13 @@ import react from "@vitejs/plugin-react";
 import electron from "vite-plugin-electron";
 import electronRenderer from "vite-plugin-electron-renderer";
 import path from "node:path";
+import { builtinModules } from "node:module";
+
+const electronExternals = [
+  "electron",
+  ...builtinModules,
+  ...builtinModules.map((mod) => `node:${mod}`),
+];
 
 export default defineConfig({
   plugins: [
@@ -13,8 +20,9 @@ export default defineConfig({
         vite: {
           build: {
             outDir: "dist-electron",
+            target: "node22",
             rollupOptions: {
-              external: ["electron"],
+              external: electronExternals,
             },
           },
         },
@@ -27,8 +35,9 @@ export default defineConfig({
         vite: {
           build: {
             outDir: "dist-electron",
+            target: "node22",
             rollupOptions: {
-              external: ["electron"],
+              external: electronExternals,
             },
           },
         },

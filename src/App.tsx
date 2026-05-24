@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { HashRouter, Routes, Route } from "react-router-dom";
 import { AppShell } from "./views/AppShell";
 import { ChatView } from "./views/ChatView";
 import { CoworkView } from "./views/CoworkView";
@@ -36,7 +36,7 @@ export function App() {
   }, []);
 
   return (
-    <BrowserRouter>
+    <HashRouter>
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<ChatView />} />
@@ -56,6 +56,6 @@ export function App() {
           <Route path="tools" element={<ToolsView />} />
         </Route>
       </Routes>
-    </BrowserRouter>
+    </HashRouter>
   );
 }
