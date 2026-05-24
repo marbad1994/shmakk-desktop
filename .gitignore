@@ -1,4 +1,6 @@
 PLAN.md
+build/
+info.md
 .shmakk/
 .claude/
 makkgui/
@@ -7,4 +9,6 @@ shmakk/
 node_modules/
 dist/
 dist-electron/
+release/
 mockups/
+.build/

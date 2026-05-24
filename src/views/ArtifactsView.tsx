@@ -1,22 +1,43 @@
 import { useState, useEffect } from "react";
+import Editor from "@monaco-editor/react";
 import { FileText, Trash2, Download, Eye, Code } from "lucide-react";
-import { Button } from "../components/Button";
+import { useNavigate } from "react-router-dom";
+import { useChatStore } from "../stores/chatStore";
+import { useDesignStore } from "../stores/designStore";
+import type { ArtifactScope } from "../types/api";
 import "./ArtifactsView.css";
 
+interface ProjectOption {
+  id: string;
+  name: string;
+}
+
 export function ArtifactsView() {
+  const navigate = useNavigate();
   const [files, setFiles] = useState<Array<{ name: string; size: number; mtime: number }>>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [content, setContent] = useState<string>("");
   const [tab, setTab] = useState<"preview" | "code">("preview");
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [scope, setScope] = useState<ArtifactScope>({ type: "global" });
 
   const loadFiles = () => {
-    window.api.artifacts.list().then((r) => setFiles(r.files)).catch(() => {});
+    window.api.artifacts.list(scope).then((r) => setFiles(r.files)).catch(() => {});
   };
-  useEffect(() => { loadFiles(); }, []);
+  useEffect(() => {
+    window.api.projects.list().then((rows) => {
+      setProjects(rows.map((p) => ({ id: p.id, name: p.name })));
+    }).catch(() => setProjects([]));
+  }, []);
+  useEffect(() => {
+    setSelected(null);
+    setContent("");
+    loadFiles();
+  }, [scope.type, scope.projectId]);
 
   const handleSelect = async (name: string) => {
     setSelected(name);
-    const result = await window.api.artifacts.read(name);
+    const result = await window.api.artifacts.read(name, scope);
     if (result) {
       setContent(result.content);
       setTab("preview");
@@ -24,7 +45,7 @@ export function ArtifactsView() {
   };
 
   const handleDelete = async (name: string) => {
-    await window.api.artifacts.delete(name);
+    await window.api.artifacts.delete(name, scope);
     if (selected === name) { setSelected(null); setContent(""); }
     loadFiles();
   };
@@ -40,6 +61,14 @@ export function ArtifactsView() {
     URL.revokeObjectURL(url);
   };
 
+  const handleOpenInDesign = async () => {
+    if (!selected || !isHtml) return;
+    const sessionId = await useChatStore.getState().loadModeSession("design");
+    if (!sessionId) return;
+    useDesignStore.getState().openArtifact(sessionId, selected, content);
+    navigate("/design");
+  };
+
   const ext = selected?.split(".").pop()?.toLowerCase() || "";
   const isHtml = ext === "html" || ext === "htm";
   const isSvg = ext === "svg";
@@ -51,6 +80,17 @@ export function ArtifactsView() {
       <div className="chat-header">
         <div className="chat-title">Artifacts</div>
         <span className="art-view-count mono">{files.length} files</span>
+        <div className="grow" />
+        <select className="art-scope-select" value={scope.type === "project" ? scope.projectId || "" : "global"}
+          onChange={(e) => {
+            if (e.target.value === "global") setScope({ type: "global" });
+            else setScope({ type: "project", projectId: e.target.value });
+          }}>
+          <option value="global">Global artifacts</option>
+          {projects.map((project) => (
+            <option key={project.id} value={project.id}>{project.name}</option>
+          ))}
+        </select>
       </div>
       <div className="art-view-body">
         <div className="art-view-list">
@@ -96,6 +136,11 @@ export function ArtifactsView() {
                     </button>
                   </>
                 )}
+                {isHtml && (
+                  <button className="art-view-tab" onClick={handleOpenInDesign} type="button">
+                    Open in Design
+                  </button>
+                )}
                 <button className="art-view-tab" onClick={handleDownload} type="button">
                   <Download size={12} />
                 </button>
@@ -108,7 +153,23 @@ export function ArtifactsView() {
                 ) : tab === "preview" && isMd ? (
                   <div className="art-view-md">{content}</div>
                 ) : (
-                  <pre className="art-view-content mono">{content}</pre>
+                  <Editor
+                    language={ext || "text"}
+                    value={content}
+                    options={{
+                      readOnly: true,
+                      minimap: { enabled: false },
+                      automaticLayout: true,
+                      scrollBeyondLastLine: false,
+                      wordWrap: "on",
+                      renderLineHighlight: "none",
+                      lineNumbers: "on",
+                      fontSize: 13,
+                      smoothScrolling: true,
+                    }}
+                    theme="vs-dark"
+                    className="art-view-code-editor"
+                  />
                 )}
               </div>
             </>

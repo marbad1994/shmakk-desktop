@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { useChatStore } from "./chatStore";
 
 export interface CoworkActivity {
   runId: string;
@@ -64,7 +65,54 @@ interface CoworkState {
 
 let runCounter = 0;
 
-export const useCoworkStore = create<CoworkState>((set, get) => ({
+export const useCoworkStore = create<CoworkState>((set, get) => {
+  // Register IPC listeners at store level — survive tab switches
+  if (typeof window !== "undefined" && window.api?.cowork) {
+    window.api.cowork.onActivity((data) => {
+      set((s) => ({
+        runs: s.runs.map((r) =>
+          r.id === data.runId
+            ? { ...r, activity: [...r.activity, data] }
+            : r
+        ),
+      }));
+    });
+    window.api.cowork.onDone((data) => {
+      if (data.cancelled) {
+        set((s) => ({
+          runs: s.runs.map((r) =>
+            r.id === data.runId ? { ...r, status: "cancelled" as const } : r
+          ),
+        }));
+      } else {
+        set((s) => ({
+          runs: s.runs.map((r) =>
+            r.id === data.runId
+              ? { ...r, status: "done" as const, reply: data.reply || r.reply, fileChanges: (data.edits as any) || r.fileChanges }
+              : r
+          ),
+        }));
+        // Persist to session
+        const activeId = useChatStore.getState().activeId;
+        const run = get().runs.find((r) => r.id === data.runId);
+        if (activeId && !activeId.startsWith("conv-") && run) {
+          window.api.sessions.addTurn(activeId, "user", run.prompt).catch(() => {});
+          window.api.sessions.addTurn(activeId, "assistant", JSON.stringify({
+            type: "cowork", reply: data.reply || "", prompt: run.prompt, edits: data.edits,
+          })).catch(() => {});
+        }
+      }
+    });
+    window.api.cowork.onError((data) => {
+      set((s) => ({
+        runs: s.runs.map((r) =>
+          r.id === data.runId ? { ...r, status: "error" as const, error: data.error } : r
+        ),
+      }));
+    });
+  }
+
+  return ({
   sessions: [],
   activeSessionId: null,
   runs: [],
@@ -193,4 +241,5 @@ export const useCoworkStore = create<CoworkState>((set, get) => ({
       ],
       activeSessionId: s.activeSessionId,
     })),
-}));
+  });
+});

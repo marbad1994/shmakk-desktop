@@ -29,6 +29,7 @@ import { useCoworkStore } from "../stores/coworkStore";
 import type { CoworkActivity, CoworkFileChange } from "../stores/coworkStore";
 import { usePluginStore } from "../stores/pluginStore";
 import { useSettingsStore } from "../stores/settingsStore";
+import { withActiveProjectContext } from "../services/projectContext";
 import "./CoworkView.css";
 
 type ViewMode = "home" | "schedule-new";
@@ -120,6 +121,30 @@ export function CoworkView() {
 
   const selectCommand = (cmd: typeof allCommands[number]) => {
     setComposerInput(`/${cmd.name} `);
+  };
+
+  const handleComposerKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (showCmdPalette && filteredCommands.length > 0) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setCmdPaletteIdx((i) => (i + 1) % filteredCommands.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setCmdPaletteIdx((i) => (i - 1 + filteredCommands.length) % filteredCommands.length);
+        return;
+      }
+      if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) {
+        e.preventDefault();
+        selectCommand(filteredCommands[cmdPaletteIdx]);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        setComposerInput("");
+      }
+    }
   };
 
   const handleCreateSchedule = async () => {
@@ -233,24 +258,7 @@ export function CoworkView() {
     if (!pluginLoaded) loadPlugins();
   }, [pluginLoaded, loadPlugins]);
 
-  // IPC event listeners
-  useEffect(() => {
-    const unsubActivity = window.api.cowork.onActivity((data) => {
-      pushActivity(data);
-    });
-    const unsubDone = window.api.cowork.onDone((data) => {
-      if (data.cancelled) cancelRunDone(data.runId);
-      else finishRun(data.runId, data.reply || "", data.edits as CoworkFileChange[]);
-    });
-    const unsubError = window.api.cowork.onError((data) => {
-      failRun(data.runId, data.error);
-    });
-    return () => {
-      unsubActivity();
-      unsubDone();
-      unsubError();
-    };
-  }, [pushActivity, finishRun, cancelRunDone, failRun]);
+  // IPC events handled at store level — survives tab switches
 
   // Auto-scroll activity feed
   useEffect(() => {
@@ -270,11 +278,12 @@ export function CoworkView() {
 
   /* ── Handlers ──────────────────────────────────── */
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = composerInput.trim();
     if (!text || runningRuns.length > 0) return;
     setComposerInput("");
-    startRun({ prompt: text, profile, autoApprove });
+    const prompt = await withActiveProjectContext(text);
+    startRun({ prompt, profile, autoApprove });
   };
 
   const handleQuickAction = (qa: typeof QUICK_ACTIONS[number]) => {
@@ -681,42 +690,6 @@ export function CoworkView() {
           </div>
         )}
 
-        {/* Composer */}
-        <Composer
-          value={composerInput}
-          onChange={setComposerInput}
-          onSend={handleSend}
-          placeholder="Describe what you want done..."
-          generating={runningRuns.length > 0 && !!activeRunId}
-          onStop={() => { if (activeRunId) cancelRun(activeRunId); }}
-          header={
-            <div className="cw-config-row">
-              <select className="cw-config-select" value={profile} onChange={(e) => setProfile(e.target.value)}>
-                {PROFILES.map((p) => (<option key={p} value={p}>{p}</option>))}
-              </select>
-            </div>
-          }
-        >
-          {showCmdPalette && filteredCommands.length > 0 && (
-            <div className="cmd-palette">
-              {filteredCommands.map((cmd, i) => (
-                <button key={cmd.name} className={`cmd-palette-item ${i === cmdPaletteIdx ? "cmd-palette-item-active" : ""}`}
-                  onClick={() => selectCommand(cmd)} type="button">
-                  <span className="cmd-palette-name mono">/{cmd.name}</span>
-                  <span className="cmd-palette-desc">{cmd.description || cmd.plugin}</span>
-                </button>
-              ))}
-            </div>
-          )}
-          <div className="cw-composer-chips">
-            {QUICK_ACTIONS.map((qa) => (
-              <button key={qa.id} className="qa-chip" type="button" onClick={() => handleQuickAction(qa)}>
-                <qa.icon size={13} strokeWidth={1.5} /><span>{qa.label}</span>
-              </button>
-            ))}
-          </div>
-        </Composer>
-
         {/* Schedules */}
         {schedules.length > 0 && (
           <div className="cw-section">
@@ -811,6 +784,42 @@ export function CoworkView() {
           </div>
         ) : null}
       </div>
+
+      <Composer
+        value={composerInput}
+        onChange={setComposerInput}
+        onSend={handleSend}
+        placeholder="Describe what you want done..."
+        generating={runningRuns.length > 0 && !!activeRunId}
+        onStop={() => { if (activeRunId) cancelRun(activeRunId); }}
+        onKeyDown={handleComposerKeyDown}
+        header={
+          <div className="cw-config-row">
+            <select className="cw-config-select" value={profile} onChange={(e) => setProfile(e.target.value)}>
+              {PROFILES.map((p) => (<option key={p} value={p}>{p}</option>))}
+            </select>
+          </div>
+        }
+      >
+        {showCmdPalette && filteredCommands.length > 0 && (
+          <div className="cmd-palette">
+            {filteredCommands.map((cmd, i) => (
+              <button key={cmd.name} className={`cmd-palette-item ${i === cmdPaletteIdx ? "cmd-palette-item-active" : ""}`}
+                onClick={() => selectCommand(cmd)} type="button">
+                <span className="cmd-palette-name mono">/{cmd.name}</span>
+                <span className="cmd-palette-desc">{cmd.description || cmd.plugin}</span>
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="cw-composer-chips">
+          {QUICK_ACTIONS.map((qa) => (
+            <button key={qa.id} className="qa-chip" type="button" onClick={() => handleQuickAction(qa)}>
+              <qa.icon size={13} strokeWidth={1.5} /><span>{qa.label}</span>
+            </button>
+          ))}
+        </div>
+      </Composer>
 
       {/* Plugin Editor Modal */}
       {editingPlugin && (

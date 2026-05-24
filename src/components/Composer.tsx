@@ -1,6 +1,5 @@
-import { useState, useRef, useEffect, useCallback } from "react";
-import { ArrowUp, Square, ChevronDown, Mic } from "lucide-react";
-import { useSettingsStore } from "../stores/settingsStore";
+import { useState, useRef, useEffect } from "react";
+import { ArrowUp, Mic, Paperclip, Square } from "lucide-react";
 import { useVoiceStore } from "../stores/voiceStore";
 import "./Composer.css";
 
@@ -12,21 +11,17 @@ interface ComposerProps {
   disabled?: boolean;
   generating?: boolean;
   onStop?: () => void;
+  onKeyDown?: (event: React.KeyboardEvent<HTMLTextAreaElement>) => void;
   header?: React.ReactNode;
   children?: React.ReactNode;
 }
 
 export function Composer({
   value, onChange, onSend, placeholder = "Type a message...",
-  disabled = false, generating = false, onStop, header, children,
+  disabled = false, generating = false, onStop, onKeyDown, header, children,
 }: ComposerProps) {
-  const providerId = useSettingsStore((s) => s.providerId);
-  const model = useSettingsStore((s) => s.model);
-  const endpoints = useSettingsStore((s) => s.endpoints);
-  const saveModel = useSettingsStore((s) => s.saveModel);
-  const [modelDropOpen, setModelDropOpen] = useState(false);
-  const modelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const voiceChecked = useVoiceStore((s) => s.checked);
   const checkVoiceAvailability = useVoiceStore((s) => s.checkAvailability);
@@ -55,20 +50,25 @@ export function Composer({
   };
 
   useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (modelRef.current && !modelRef.current.contains(e.target as Node)) setModelDropOpen(false);
-    };
-    if (modelDropOpen) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [modelDropOpen]);
-
-  useEffect(() => {
     const el = inputRef.current; if (!el) return;
     el.style.height = "auto"; el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [value]);
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    onKeyDown?.(e);
+    if (e.defaultPrevented) return;
     if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); onSend(); }
+  };
+
+  const handleAttachFiles = async (files: FileList | null) => {
+    if (!files?.length) return;
+    const snippets = await Promise.all(Array.from(files).slice(0, 5).map(async (file) => {
+      const text = await file.text().catch(() => "");
+      const content = text.slice(0, 8000);
+      return `\n\nAttached file: ${file.name}\n\`\`\`\n${content}${text.length > content.length ? "\n...truncated" : ""}\n\`\`\``;
+    }));
+    onChange(`${value}${snippets.join("")}`);
+    if (fileRef.current) fileRef.current.value = "";
   };
 
   const handleVoice = async () => {
@@ -78,8 +78,15 @@ export function Composer({
   };
 
   return (
-    <div className="shmakk-composer">
+    <div className={`shmakk-composer ${generating ? "shmakk-composer-generating" : ""}`}>
       <div className="shmakk-composer-input">
+        <input
+          ref={fileRef}
+          className="shmakk-file-input"
+          type="file"
+          multiple
+          onChange={(e) => handleAttachFiles(e.target.files)}
+        />
         {header}
         <textarea
           ref={inputRef}
@@ -92,26 +99,9 @@ export function Composer({
         />
         {children}
         <div className="shmakk-composer-row">
-          {endpoints.length > 1 && (
-            <div className="shmakk-model-pick" ref={modelRef}>
-              <button className="shmakk-model-btn" onClick={() => setModelDropOpen(!modelDropOpen)} type="button">
-                <span className="shmakk-model-label mono">{providerId}</span>
-                <ChevronDown size={10} strokeWidth={2}
-                  style={{ transform: modelDropOpen ? "rotate(180deg)" : undefined, transition: "transform 0.15s ease" }}
-                />
-              </button>
-              {modelDropOpen && (
-                <div className="shmakk-model-drop">
-                  {endpoints.map((ep) => (
-                    <button key={ep.id} className={`shmakk-model-item ${ep.id === providerId ? "shmakk-model-item-active" : ""}`}
-                      onClick={() => { saveModel(ep.id, model); setModelDropOpen(false); }} type="button">
-                      <span>{ep.name}</span><span className="shmakk-model-type mono">{ep.type}</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
+          <button className="shmakk-tool-btn" onClick={() => fileRef.current?.click()} title="Attach files" type="button">
+            <Paperclip size={14} strokeWidth={1.5} />
+          </button>
           {voiceChecked && microphoneAvailable && sttEnabled && (
             <button className={`shmakk-voice-btn ${isListening ? "shmakk-voice-active" : ""}`}
               onClick={handleVoice} title="Voice input" type="button">
@@ -125,10 +115,12 @@ export function Composer({
             </button>
           )}
           <div className="shmakk-composer-spacer" />
-          <span className="shmakk-composer-hint mono">{generating ? "Generating..." : "Enter to send"}</span>
+          <span className={`shmakk-composer-hint ${generating ? "shmakk-composer-hint-live" : ""}`}>
+            {generating ? <><span className="shmakk-generating-dot" />Generating</> : "Enter to send"}
+          </span>
           {generating && onStop ? (
-            <button className="shmakk-stop-btn" onClick={onStop} type="button">
-              <Square size={14} strokeWidth={2} fill="currentColor" /> Stop
+            <button className="shmakk-stop-btn" onClick={onStop} type="button" title="Stop generation" aria-label="Stop generation">
+              <Square size={13} strokeWidth={2} fill="currentColor" />
             </button>
           ) : (
             <button className="shmakk-send-btn" onClick={onSend} disabled={!value.trim() || disabled} type="button">

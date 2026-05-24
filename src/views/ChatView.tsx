@@ -6,12 +6,7 @@ import {
   Download,
   Square,
   PenSquare,
-  ChevronDown,
-  FileText,
-  FolderOpen,
-  Save,
 } from "lucide-react";
-import { StatusDot } from "../components/StatusDot";
 import { ThinkingPanel } from "../components/ThinkingPanel";
 import { ToolCard } from "../components/ToolCard";
 import type { ToolCall } from "../components/ToolCard";
@@ -69,15 +64,12 @@ export function ChatView() {
 
   const providerId = useSettingsStore((s) => s.providerId);
   const model = useSettingsStore((s) => s.model);
-  const endpoints = useSettingsStore((s) => s.endpoints);
-  const saveModel = useSettingsStore((s) => s.saveModel);
 
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
-  const [modelDropOpen, setModelDropOpen] = useState(false);
   const [stsActive, setStsActive] = useState(false);
   const [stsState, setStsState] = useState<"listening" | "thinking" | "speaking" | "off">("off");
 
@@ -85,10 +77,6 @@ export function ChatView() {
   const [allCommands, setAllCommands] = useState<Array<{ name: string; plugin: string; description: string }>>([]);
   const [cmdPaletteIdx, setCmdPaletteIdx] = useState(0);
 
-  // Session files
-  const [sessionFiles, setSessionFiles] = useState<Array<{ name: string; size: number }>>([]);
-  const [previewFile, setPreviewFile] = useState<{ name: string; content: string; type: string } | null>(null);
-  const [showSessionFiles, setShowSessionFiles] = useState(false);
   const messagesEnd = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -178,7 +166,7 @@ export function ChatView() {
       role: "assistant",
       content: "",
       streaming: true,
-    });
+    }, { persist: false });
     setStreamingMessageId(assistantMsgId);
 
     try {
@@ -250,7 +238,7 @@ export function ChatView() {
       role: "assistant",
       content: "",
       streaming: true,
-    });
+    }, { persist: false });
 
     try {
       const history = msgs.slice(0, msgs.length - 1 - lastUserIdx);
@@ -380,19 +368,6 @@ export function ChatView() {
     }
   };
 
-  /* ── Model selector click-outside ────────────────── */
-
-  const modelRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (modelRef.current && !modelRef.current.contains(e.target as Node)) {
-        setModelDropOpen(false);
-      }
-    };
-    if (modelDropOpen) document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [modelDropOpen]);
-
   /* ── STS event listeners ─────────────────────────── */
 
   useEffect(() => {
@@ -430,7 +405,7 @@ export function ChatView() {
       role: "assistant",
       content: "",
       streaming: true,
-    });
+    }, { persist: false });
     setStreamingMessageId(assistantMsgId);
 
     try {
@@ -530,32 +505,6 @@ export function ChatView() {
     : [];
   useEffect(() => { setCmdPaletteIdx(0); }, [cmdFilter]);
 
-  /* ── Session files ──────────────────────────────── */
-
-  useEffect(() => {
-    if (activeId && showSessionFiles) {
-      window.api.sessionFiles.list(activeId).then((r) => setSessionFiles(r.files)).catch(() => {});
-    }
-  }, [activeId, showSessionFiles, activeConv?.messages]);
-
-  const handlePreviewSessionFile = async (fileName: string) => {
-    if (!activeId) return;
-    const content = await window.api.sessionFiles.read(activeId, fileName);
-    if (content === null) return;
-    const ext = fileName.split(".").pop()?.toLowerCase() || "";
-    const isHtml = ext === "html" || ext === "htm";
-    const isSvg = ext === "svg";
-    const isMd = ext === "md";
-    const type = isHtml ? "html" : isSvg ? "svg" : isMd ? "markdown" : "code";
-    setPreviewFile({ name: fileName, content, type });
-  };
-
-  const handlePromoteToArtifacts = async (fileName: string) => {
-    if (!activeId) return;
-    await window.api.sessionFiles.promoteToArtifacts(activeId, fileName);
-    window.api.sessionFiles.list(activeId).then((r) => setSessionFiles(r.files)).catch(() => {});
-  };
-
   /* ── Voice availability check ──────────────────── */
 
   const voiceChecked = useVoiceStore((s) => s.checked);
@@ -622,7 +571,7 @@ export function ChatView() {
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
               </svg>
             </div>
-            <h2>Start a conversation</h2>
+            <h2>Start a session</h2>
             <p>
               Ask shmakk to build something, fix a bug, or explain code in this
               workspace. Capital letters bypass the autocorrect.
@@ -635,6 +584,7 @@ export function ChatView() {
               disabled={sending}
               generating={!!(sending && streamingMessageId)}
               onStop={handleStop}
+              onKeyDown={handleKeyDown}
             >
               {showCmdPalette && filteredCommands.length > 0 && (
                 <div className="cmd-palette">
@@ -666,10 +616,6 @@ export function ChatView() {
         {/* Header */}
         <div className="chat-header">
           <div className="chat-title">{activeConv.title}</div>
-          <span className="profile-pill">
-            <StatusDot variant="accent" size={5} />
-            {model || providerId || "shmakk"}
-          </span>
           <button
             className="chat-header-btn"
             title="Retry last"
@@ -696,7 +642,7 @@ export function ChatView() {
         >
           {activeConv.messages.length === 0 && !loaded ? (
             <div className="chat-placeholder">
-              <p className="text-muted">Loading conversation...</p>
+              <p className="text-muted">Loading session...</p>
             </div>
           ) : (
             <>
@@ -795,64 +741,6 @@ export function ChatView() {
           )}
         </div>
 
-        {/* Session files toggle */}
-        {activeConv && !activeConv.id.startsWith("conv-") && (
-          <div className="session-files-bar">
-            <button
-              className="session-files-toggle"
-              onClick={() => setShowSessionFiles(!showSessionFiles)}
-              type="button"
-            >
-              <FolderOpen size={12} strokeWidth={1.5} />
-              Session files
-              {sessionFiles.length > 0 && <span className="session-files-count">{sessionFiles.length}</span>}
-            </button>
-          </div>
-        )}
-
-        {/* Session files panel */}
-        {showSessionFiles && sessionFiles.length > 0 && (
-          <div className="session-files-panel">
-            <div className="session-files-list">
-              {sessionFiles.map((f) => (
-                <button
-                  key={f.name}
-                  className={`session-file-item ${previewFile?.name === f.name ? "session-file-item-active" : ""}`}
-                  onClick={() => handlePreviewSessionFile(f.name)}
-                  type="button"
-                >
-                  <FileText size={12} strokeWidth={1.5} />
-                  <span className="session-file-name">{f.name}</span>
-                  <span className="session-file-size mono">{f.size} B</span>
-                  <button
-                    className="session-file-promote"
-                    onClick={(e) => { e.stopPropagation(); handlePromoteToArtifacts(f.name); }}
-                    title="Save to artifacts"
-                    type="button"
-                  >
-                    <Save size={10} strokeWidth={1.5} />
-                  </button>
-                </button>
-              ))}
-            </div>
-            {previewFile && (
-              <div className="session-file-preview">
-                <div className="session-file-preview-header mono">
-                  {previewFile.name}
-                  <span className="session-file-preview-type">{previewFile.type}</span>
-                </div>
-                {previewFile.type === "html" ? (
-                  <iframe srcDoc={previewFile.content} sandbox="allow-scripts" className="session-file-iframe" title={previewFile.name} />
-                ) : previewFile.type === "svg" ? (
-                  <div className="session-file-svg" dangerouslySetInnerHTML={{ __html: previewFile.content }} />
-                ) : (
-                  <pre className="session-file-content mono">{previewFile.content}</pre>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-
         {/* Pending tool confirmation */}
         {pending && (
           <div className="msg-tools-pending">
@@ -894,6 +782,7 @@ export function ChatView() {
           disabled={sending}
           generating={!!(sending && streamingMessageId)}
           onStop={handleStop}
+          onKeyDown={handleKeyDown}
         >
           {showCmdPalette && filteredCommands.length > 0 && (
             <div className="cmd-palette">

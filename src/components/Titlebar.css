@@ -1,19 +1,24 @@
 .titlebar {
-  height: 40px;
-  background: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-light);
+  height: 38px;
+  background: #060609;
+  border-bottom: 1px solid #18181d;
   display: flex;
   align-items: center;
-  padding: 0 14px;
-  gap: 12px;
+  padding: 0;
   user-select: none;
   -webkit-app-region: drag;
   flex-shrink: 0;
 }
 
+.titlebar-drag {
+  flex: 1;
+  height: 100%;
+}
+
 .traffic-lights {
   display: flex;
   gap: 8px;
+  padding-left: 14px;
   -webkit-app-region: no-drag;
 }
 
@@ -44,38 +49,45 @@
 }
 
 .titlebar-center {
-  flex: 1;
   display: flex;
   justify-content: center;
-  color: var(--text-secondary);
+  align-items: center;
+  color: #555;
   font-size: 12px;
-  font-family: var(--font-mono);
-  letter-spacing: 0.02em;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  pointer-events: none;
 }
 
 .titlebar-brand {
-  font-family: var(--font-mono);
+  color: inherit;
 }
 
-.titlebar-workspace {
-  font-size: 10px;
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 360px;
-}
-
-.titlebar-right {
+.tb-controls {
   display: flex;
-  gap: 8px;
-  align-items: center;
   -webkit-app-region: no-drag;
 }
 
-.endpoint-dot {
-  width: 6px;
-  height: 6px;
-  background: var(--accent);
-  border-radius: 50%;
+.tb-btn {
+  width: 46px;
+  height: 38px;
+  border: none;
+  background: transparent;
+  color: #888;
+  font-size: 14px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition), color var(--transition);
+}
+
+.tb-btn:hover {
+  background: #1f1f26;
+  color: #d4d4d4;
+}
+
+.tb-btn.tb-close:hover {
+  background: #e81123;
+  color: #fff;
 }

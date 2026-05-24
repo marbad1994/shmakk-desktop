@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Wrench,
   Server,
@@ -32,7 +33,9 @@ const TABS = [
 
 export function SettingsView() {
   const store = useSettingsStore();
-  const [activeTab, setActiveTab] = useState("general");
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get("tab") || "general";
+  const [activeTab, setActiveTab] = useState(TABS.some((t) => t.id === tabFromUrl) ? tabFromUrl : "general");
   const [workspacePath, setWorkspacePath] = useState("");
 
   // Add endpoint modal state
@@ -45,6 +48,16 @@ export function SettingsView() {
   useEffect(() => {
     window.api.workspace.getRoot().then(setWorkspacePath).catch(() => {});
   }, []);
+
+  useEffect(() => {
+    const next = searchParams.get("tab") || "general";
+    if (TABS.some((t) => t.id === next)) setActiveTab(next);
+  }, [searchParams]);
+
+  const selectTab = (id: string) => {
+    setActiveTab(id);
+    setSearchParams(id === "general" ? {} : { tab: id }, { replace: true });
+  };
 
   const handleBrowseWorkspace = async () => {
     const dir = await window.api.dialog.selectDirectory();
@@ -90,7 +103,7 @@ export function SettingsView() {
             <div
               key={tab.id}
               className={`settings-tab ${isActive ? "settings-tab-active" : ""}`}
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => selectTab(tab.id)}
             >
               <span className="settings-tab-icon">
                 <tab.icon size={16} strokeWidth={1.5} />

@@ -16,7 +16,7 @@
 }
 
 .code-lang {
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
   font-size: 11px;
   color: var(--text-secondary);
 }
@@ -48,6 +48,6 @@
   line-height: 1.7;
   color: var(--text-primary);
   overflow-x: auto;
-  font-family: var(--font-mono);
+  font-family: var(--font-code);
   white-space: pre;
 }

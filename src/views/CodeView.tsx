@@ -8,11 +8,13 @@ import { Composer } from "../components/Composer";
 import { DETECTION_SCRIPT, DETECTION_SCRIPT_RAW } from "../services/detectionScript";
 import { ElementInspector } from "../components/ElementInspector";
 import type { ElementInfo } from "../components/ElementInspector";
+import { useChatStore } from "../stores/chatStore";
+import { useCodeStore, type OpenFile, type CodeChatMsg, type CodeChange } from "../stores/codeStore";
+import { withActiveProjectContext } from "../services/projectContext";
 import "./CodeView.css";
 
-interface OpenFile { path: string; content: string; language: string; isDirty: boolean; }
-interface CodeChange { filePath: string; find: string; replace: string; state?: "pending" | "applied" | "rejected"; }
-interface CodeChatMessage { role: "user" | "agent"; content: string; diff?: string; diffStats?: string; changes?: CodeChange[]; detail?: string; }
+// Local aliases for existing code
+type CodeChatMessage = CodeChatMsg;
 
 const LANG_MAP: Record<string, string> = {
   ts:"typescript",tsx:"typescript",js:"javascript",jsx:"javascript",css:"css",scss:"scss",
@@ -98,25 +100,37 @@ export function CodeView() {
   const activeFilePath = useProjectStore((s) => s.activeFilePath);
   const setActiveFile = useProjectStore((s) => s.setActiveFile);
 
-  const [openFiles, setOpenFiles] = useState<OpenFile[]>([]);
-  const [activeOpenPath, setActiveOpenPath] = useState<string | null>(null);
+  // Persistent state (survives tab switches) via codeStore
+  const openFiles = useCodeStore((s) => s.openFiles);
+  const setOpenFiles = useCodeStore((s) => s.setOpenFiles);
+  const activeOpenPath = useCodeStore((s) => s.activeOpenPath);
+  const setActiveOpenPath = useCodeStore((s) => s.setActiveOpenPath);
+  const chatMessages = useCodeStore((s) => s.chatMessages);
+  const setChatMessages = useCodeStore((s) => s.setChatMessages);
+  const showPreview = useCodeStore((s) => s.showPreview);
+  const setShowPreview = useCodeStore((s) => s.setShowPreview);
+  const previewHtml = useCodeStore((s) => s.previewHtml);
+  const setPreviewHtml = useCodeStore((s) => s.setPreviewHtml);
+  const previewUrl = useCodeStore((s) => s.previewUrl);
+  const setPreviewUrl = useCodeStore((s) => s.setPreviewUrl);
+  const devServerRunning = useCodeStore((s) => s.devServerRunning);
+  const setDevServerRunning = useCodeStore((s) => s.setDevServerRunning);
+  const showInspector = useCodeStore((s) => s.showInspector);
+  const setShowInspector = useCodeStore((s) => s.setShowInspector);
+  const inspectedEl = useCodeStore((s) => s.inspectedEl);
+  const setInspectedEl = useCodeStore((s) => s.setInspectedEl);
+
+  // Transient UI state (local)
   const [editorRef, setEditorRef] = useState<any>(null);
-  const [chatMessages, setChatMessages] = useState<CodeChatMessage[]>([]);
   const [chatInput, setChatInput] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
   const [expandedMsgs, setExpandedMsgs] = useState<Set<number>>(new Set());
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set(["src"]));
   const [treeWidth, setTreeWidth] = useState(220);
   const [chatWidth, setChatWidth] = useState(340);
-  const [showPreview, setShowPreview] = useState(false);
-  const [previewHtml, setPreviewHtml] = useState("");
-  const [previewUrl, setPreviewUrl] = useState("");
   const [devServerPath, setDevServerPath] = useState<string | null>(null);
-  const [devServerRunning, setDevServerRunning] = useState(false);
   const [devServerStarting, setDevServerStarting] = useState(false);
   const [previewFullscreen, setPreviewFullscreen] = useState(false);
-  const [inspectedEl, setInspectedEl] = useState<ElementInfo | null>(null);
-  const [showInspector, setShowInspector] = useState(false);
   const accumulatedEditsRef = useRef<Map<string, { style: Record<string, string>, text?: string, target: "inline" | "class" }>>(new Map());
   const inspectedSelectorRef = useRef("");
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -238,9 +252,10 @@ export function CodeView() {
     const existing = openFiles.find((f) => f.path === filePath);
     if (existing) { setActiveOpenPath(filePath); setActiveFile(filePath); return; }
     let content = files.find((f) => f.path === filePath)?.content;
-    if (!content) {
-      content = await window.api.workspace.readFile(filePath) || "";
-      if (!content) { setActiveFile(filePath); return; }
+    if (content === undefined) {
+      const read = await window.api.workspace.readFile(filePath);
+      if (read === null) { setActiveFile(filePath); return; }
+      content = read;
     }
     const e = filePath.split(".").pop()?.toLowerCase() || "";
     const f: OpenFile = { path: filePath, content, language: LANG_MAP[e] || "plaintext", isDirty: false };
@@ -292,8 +307,10 @@ export function CodeView() {
 
   const handleSave = async () => {
     if (!activeOpenPath || !activeOpen) return;
-    await window.api.workspace.writeFile(activeOpenPath, activeOpen.content);
-    setOpenFiles((p) => p.map((f) => f.path === activeOpenPath ? { ...f, isDirty: false } : f));
+    const ok = await window.api.workspace.writeFile(activeOpenPath, activeOpen.content);
+    if (ok) {
+      setOpenFiles((p) => p.map((f) => f.path === activeOpenPath ? { ...f, isDirty: false } : f));
+    }
   };
 
   // Ctrl+S to save
@@ -492,8 +509,14 @@ REPLACE: <exact replacement text>
       chatContextRef.current = [];
       setChatContextCount(0);
     }
+    aiPrompt = await withActiveProjectContext(aiPrompt);
     const detail = aiPrompt !== displayMsg ? aiPrompt : undefined;
     setChatMessages((p) => [...p, { role: "user", content: displayMsg, detail }]);
+    // Save to session
+    const activeId = useChatStore.getState().activeId;
+    if (activeId && !activeId.startsWith("conv-")) {
+      window.api.sessions.addTurn(activeId, "user", displayMsg).catch(() => {});
+    }
     setChatInput("");
     setChatLoading(true);
     try {
@@ -518,6 +541,11 @@ REPLACE: <exact replacement text>
         }
       } else {
         setChatMessages((p) => [...p, { role: "agent", content: r.reply || r.error || "Done." }]);
+      }
+      // Save AI response as turn
+      const activeId = useChatStore.getState().activeId;
+      if (activeId && !activeId.startsWith("conv-")) {
+        window.api.sessions.addTurn(activeId, "assistant", r.reply || r.error || "Done.").catch(() => {});
       }
     } catch (e: any) {
       setChatMessages((p) => [...p, { role: "agent", content: String(e?.message || e) }]);
@@ -548,7 +576,8 @@ REPLACE: <exact replacement text>
     if (!content.includes(change.find)) return false;
     const newContent = content.replace(change.find, change.replace);
 
-    await window.api.workspace.writeFile(fp, newContent);
+    const wrote = await window.api.workspace.writeFile(fp, newContent);
+    if (!wrote) return false;
 
     if (fp === activeOpenPath && editorRef?.getModel()) {
       const fr = editorRef.getModel().getFullModelRange();
@@ -692,9 +721,10 @@ REPLACE: <exact replacement text>
     const detail = `Action: ${label[action]}\nFile: ${activeOpenPath}\n\nSelected code:\n\`\`\`\n${selText}\n\`\`\``;
     setChatMessages((p) => [...p, { role: "user", content: display, detail }]);
     try {
+      const selection = await withActiveProjectContext(instructions[action]);
       const r = await window.api.code.chat({
         filePath: activeOpenPath, fullFile: activeOpen?.content || "",
-        selection: instructions[action], action,
+        selection, action,
       });
       const diff = r.diff;
       if (diff && action === "fix") {
@@ -951,7 +981,7 @@ REPLACE: <exact replacement text>
                     } });
                 }}
                 onChange={(v?: string) => { if (v!==undefined) setOpenFiles((p) => p.map((f) => f.path===activeOpenPath?{...f,content:v,isDirty:true}:f)); }}
-                options={{ fontSize:12, fontFamily:"var(--font-mono), monospace", lineHeight:22,
+                options={{ fontSize:12, fontFamily:"JetBrains Mono, SFMono-Regular, Consolas, Liberation Mono, monospace", lineHeight:22,
                   minimap:{enabled:true,scale:1,showSlider:"mouseover"}, lineNumbers:"on",
                   renderLineHighlight:"all", scrollBeyondLastLine:false, padding:{top:8},
                   bracketPairColorization:{enabled:true}, automaticLayout:true, tabSize:2,

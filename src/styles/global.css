@@ -36,12 +36,12 @@ a:hover {
 }
 
 code,
-pre,
-.mono {
-  font-family: var(--font-mono);
+pre {
+  font-family: var(--font-code);
 }
 
 .mono {
+  font-family: inherit;
   font-size: 12px;
 }
 

@@ -7,6 +7,7 @@ export interface SessionSummary {
   workspace: string;
   summary: string;
   turnCount: number;
+  mode?: string;
 }
 
 export interface SessionDetail extends SessionSummary {
@@ -111,15 +112,17 @@ export interface STSState {
 }
 
 type Unsubscribe = () => void;
+type ArtifactScope = { type?: "global" | "project"; projectId?: string };
 
 export type Api = {
   commands: {
     list: () => Promise<{ commands: Array<{ name: string; plugin: string; description: string }> }>;
   };
   artifacts: {
-    list: () => Promise<{ files: Array<{ name: string; size: number; mtime: number }> }>;
-    read: (fileName: string) => Promise<{ content: string; name: string } | null>;
-    delete: (fileName: string) => Promise<boolean>;
+    list: (scope?: ArtifactScope) => Promise<{ files: Array<{ name: string; size: number; mtime: number }> }>;
+    read: (fileName: string, scope?: ArtifactScope) => Promise<{ content: string; name: string } | null>;
+    delete: (fileName: string, scope?: ArtifactScope) => Promise<boolean>;
+    save: (fileName: string, content: string, scope?: ArtifactScope) => Promise<{ path: string }>;
   };
   design: {
     generate: (prompt: string, designType: string) => Promise<{ ok?: boolean; html?: string; error?: string }>;
@@ -177,6 +180,8 @@ export type Api = {
     get: (sessionId: string) => Promise<SessionDetail | null>;
     current: () => Promise<{ id: string; startedAt: number; summary: string } | null>;
     delete: (sessionId: string) => Promise<boolean>;
+    rename: (sessionId: string, newSummary: string) => Promise<boolean>;
+    fork: (sessionId: string) => Promise<{ id: string; startedAt: number; summary: string; workspace: string; mode?: string } | null>;
     create: (summary: string, workspace: string, mode?: string) => Promise<{ id: string; startedAt: number; summary: string; workspace: string; mode?: string } | null>;
     addTurn: (sessionId: string, role: string, content: string) => Promise<boolean>;
   };
@@ -234,6 +239,16 @@ export type Api = {
     toggle: (id: string, enabled: boolean) => Promise<boolean>;
     update: (id: string, data: { name?: string; when?: string; prompt?: string; profile?: string }) => Promise<boolean>;
   };
+  projects: {
+    list: () => Promise<Array<{ id: string; name: string; description: string; rules: string; settings: Record<string, unknown>; createdAt: number }>>;
+    create: (name: string, description?: string) => Promise<{ id: string; name: string; description: string; rules: string; settings: Record<string, unknown>; createdAt: number }>;
+    update: (id: string, data: { name?: string; description?: string; rules?: string; settings?: Record<string, unknown> }) => Promise<boolean>;
+    delete: (id: string) => Promise<boolean>;
+    addSession: (projectId: string, sessionId: string) => Promise<boolean>;
+    removeSession: (projectId: string, sessionId: string) => Promise<boolean>;
+    getSessions: (projectId: string) => Promise<Array<{ id: string; startedAt: number; endedAt: number | null; workspace: string; summary: string; turnCount: number; mode: string }>>;
+    getForSession: (sessionId: string) => Promise<Array<{ id: string; name: string; description: string; rules: string; settings: Record<string, unknown>; createdAt: number }>>;
+  };
   voice: {
     listVoices: () => Promise<{ voices?: Array<{ id: string; name: string; language: string; gender: string }>; error?: string }>;
     speak: (text: string, opts?: { voice?: string; speed?: number }) => Promise<{ ok?: boolean; error?: string }>;
@@ -258,9 +273,10 @@ contextBridge.exposeInMainWorld("api", {
     list: () => ipcRenderer.invoke("commands:list"),
   },
   artifacts: {
-    list: () => ipcRenderer.invoke("artifacts:list"),
-    read: (fileName) => ipcRenderer.invoke("artifacts:read", fileName),
-    delete: (fileName) => ipcRenderer.invoke("artifacts:delete", fileName),
+    list: (scope) => ipcRenderer.invoke("artifacts:list", scope),
+    read: (fileName, scope) => ipcRenderer.invoke("artifacts:read", fileName, scope),
+    delete: (fileName, scope) => ipcRenderer.invoke("artifacts:delete", fileName, scope),
+    save: (fileName, content, scope) => ipcRenderer.invoke("artifacts:save", fileName, content, scope),
   },
   design: {
     generate: (prompt, designType) => ipcRenderer.invoke("design:generate", prompt, designType),
@@ -329,6 +345,8 @@ contextBridge.exposeInMainWorld("api", {
     get: (sessionId: string) => ipcRenderer.invoke("sessions:get", sessionId),
     current: () => ipcRenderer.invoke("sessions:current"),
     delete: (sessionId: string) => ipcRenderer.invoke("sessions:delete", sessionId),
+    rename: (sessionId: string, newSummary: string) => ipcRenderer.invoke("sessions:rename", sessionId, newSummary),
+    fork: (sessionId: string) => ipcRenderer.invoke("sessions:fork", sessionId),
     create: (summary, workspace, mode) => ipcRenderer.invoke("sessions:create", summary, workspace, mode),
     addTurn: (sessionId: string, role: string, content: string) => ipcRenderer.invoke("sessions:addTurn", sessionId, role, content),
   },
@@ -411,6 +429,16 @@ contextBridge.exposeInMainWorld("api", {
     read: (sessionId, fileName) => ipcRenderer.invoke("session-files:read", sessionId, fileName),
     saveCopy: (sessionId, fileName, content) => ipcRenderer.invoke("session-files:saveCopy", sessionId, fileName, content),
     promoteToArtifacts: (sessionId, fileName) => ipcRenderer.invoke("session-files:promoteToArtifacts", sessionId, fileName),
+  },
+  projects: {
+    list: () => ipcRenderer.invoke("projects:list"),
+    create: (name, description) => ipcRenderer.invoke("projects:create", name, description),
+    update: (id, data) => ipcRenderer.invoke("projects:update", id, data),
+    delete: (id) => ipcRenderer.invoke("projects:delete", id),
+    addSession: (projectId, sessionId) => ipcRenderer.invoke("projects:addSession", projectId, sessionId),
+    removeSession: (projectId, sessionId) => ipcRenderer.invoke("projects:removeSession", projectId, sessionId),
+    getSessions: (projectId) => ipcRenderer.invoke("projects:getSessions", projectId),
+    getForSession: (sessionId) => ipcRenderer.invoke("projects:getForSession", sessionId),
   },
   voice: {
     listVoices: () => ipcRenderer.invoke("voice:listVoices"),

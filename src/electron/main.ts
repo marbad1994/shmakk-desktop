@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 let mainWindow: BrowserWindow | null = null;
+const IS_CLI_MODE = process.env.SHMAKK_CLI === "1";
 
 // ── Paths ─────────────────────────────────────────────────────────────────
 
@@ -42,6 +43,15 @@ function createWindow() {
   }
 }
 
+function runCliMode() {
+  try {
+    require("shmakk/bin/shmakk.js");
+  } catch (e) {
+    console.error("[shmakk-desktop] Failed to launch CLI mode:", e);
+    app.exit(1);
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 function readJsonSafe(filePath: string): Record<string, unknown> | null {
@@ -64,6 +74,57 @@ function writeJsonSafe(filePath: string, data: unknown): boolean {
 
 function sendToRenderer(channel: string, data: unknown) {
   mainWindow?.webContents.send(channel, data);
+}
+
+function resolveInsideRoot(root: string, relativePath = ""): string | null {
+  if (!root) return null;
+  const resolvedRoot = path.resolve(root);
+  const resolvedPath = path.resolve(resolvedRoot, relativePath);
+  const rel = path.relative(resolvedRoot, resolvedPath);
+  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
+  return resolvedPath;
+}
+
+function resolveWorkspacePath(relativePath = ""): string | null {
+  const root = workspaceRoot || "";
+  return resolveInsideRoot(root, relativePath);
+}
+
+function safeFileName(fileName: string): string {
+  return path.basename(fileName).replace(/[<>:"/\\|?*]/g, "_");
+}
+
+function defaultProjectSettings(settings?: Record<string, unknown>): Record<string, unknown> {
+  return {
+    shareMemory: false,
+    shareKnowledge: false,
+    shareArtifacts: true,
+    ...(settings || {}),
+  };
+}
+
+function parseSettings(raw: unknown): Record<string, unknown> {
+  if (typeof raw !== "string" || !raw) return defaultProjectSettings();
+  try {
+    const parsed = JSON.parse(raw);
+    return defaultProjectSettings(parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {});
+  } catch {
+    return defaultProjectSettings();
+  }
+}
+
+function resolveShmakkBaseDir(): string {
+  const envDir = process.env.SHMAKK_SOURCE_DIR;
+  if (envDir && fs.existsSync(envDir)) return path.resolve(envDir);
+
+  try {
+    const pkgJson = require.resolve("shmakk/package.json");
+    return path.dirname(pkgJson);
+  } catch {
+    const localDir = path.resolve(__dirname, "..", "..", "shmakk");
+    if (fs.existsSync(localDir)) return localDir;
+    return path.resolve(process.cwd(), "shmakk");
+  }
 }
 
 // ── Window controls ──────────────────────────────────────────────────────
@@ -100,7 +161,7 @@ ipcMain.handle("workspace:setRoot", (_event, rootPath: string) => {
 
 ipcMain.handle("workspace:listFiles", async (_event, dirPath?: string) => {
   const root = workspaceRoot || "";
-  const target = dirPath ? path.join(root, dirPath) : root;
+  const target = resolveWorkspacePath(dirPath || "");
   if (!target || !fs.existsSync(target)) return [];
 
   const entries = fs.readdirSync(target, { withFileTypes: true });
@@ -114,23 +175,23 @@ ipcMain.handle("workspace:listFiles", async (_event, dirPath?: string) => {
 });
 
 ipcMain.handle("workspace:readFile", (_event, filePath: string) => {
-  const root = workspaceRoot || "";
-  const fullPath = path.join(root, filePath);
+  const fullPath = resolveWorkspacePath(filePath);
+  if (!fullPath) return null;
   if (!fs.existsSync(fullPath)) return null;
   return fs.readFileSync(fullPath, "utf-8");
 });
 
 ipcMain.handle("workspace:writeFile", (_event, filePath: string, content: string) => {
-  const root = workspaceRoot || "";
-  const fullPath = path.join(root, filePath);
+  const fullPath = resolveWorkspacePath(filePath);
+  if (!fullPath) return false;
   fs.mkdirSync(path.dirname(fullPath), { recursive: true });
   fs.writeFileSync(fullPath, content, "utf-8");
   return true;
 });
 
 ipcMain.handle("workspace:deleteFile", (_event, filePath: string) => {
-  const root = workspaceRoot || "";
-  const fullPath = path.join(root, filePath);
+  const fullPath = resolveWorkspacePath(filePath);
+  if (!fullPath) return false;
   if (fs.existsSync(fullPath)) {
     const stat = fs.statSync(fullPath);
     if (stat.isDirectory()) fs.rmSync(fullPath, { recursive: true });
@@ -142,8 +203,9 @@ ipcMain.handle("workspace:deleteFile", (_event, filePath: string) => {
 
 ipcMain.handle("workspace:renameFile", (_event, oldPath: string, newName: string) => {
   const root = workspaceRoot || "";
-  const oldFull = path.join(root, oldPath);
-  const newFull = path.join(root, path.dirname(oldPath), newName);
+  const oldFull = resolveWorkspacePath(oldPath);
+  const newFull = resolveWorkspacePath(path.join(path.dirname(oldPath), path.basename(newName)));
+  if (!oldFull || !newFull) return false;
   if (fs.existsSync(oldFull) && !fs.existsSync(newFull)) {
     fs.renameSync(oldFull, newFull);
     return true;
@@ -210,11 +272,13 @@ ipcMain.handle("sessions:list", (_event, mode?: string) => {
 
     const query = mode
       ? `SELECT s.id, s.started_at, s.ended_at, s.workspace, s.summary, s.mode,
-                (SELECT COUNT(*) FROM turns t WHERE t.session_id = s.id) as turn_count
+                (SELECT COUNT(*) FROM turns t WHERE t.session_id = s.id) as turn_count,
+                (SELECT MAX(t.ts) FROM turns t WHERE t.session_id = s.id) as last_active
          FROM sessions s WHERE s.mode = ?1
          ORDER BY s.started_at DESC LIMIT 200`
       : `SELECT s.id, s.started_at, s.ended_at, s.workspace, s.summary, s.mode,
-                (SELECT COUNT(*) FROM turns t WHERE t.session_id = s.id) as turn_count
+                (SELECT COUNT(*) FROM turns t WHERE t.session_id = s.id) as turn_count,
+                (SELECT MAX(t.ts) FROM turns t WHERE t.session_id = s.id) as last_active
          FROM sessions s
          ORDER BY s.started_at DESC LIMIT 200`;
 
@@ -281,6 +345,37 @@ ipcMain.handle("sessions:current", () => {
   }
 });
 
+ipcMain.handle("sessions:rename", (_event, sessionId: string, newSummary: string) => {
+  try {
+    const db = new DatabaseSync(SESSIONS_DB, { open: true });
+    try {
+      db.prepare("UPDATE sessions SET summary = ? WHERE id = ?").run(newSummary, sessionId);
+      return true;
+    } finally { db.close(); }
+  } catch { return false; }
+});
+
+ipcMain.handle("sessions:fork", (_event, sessionId: string) => {
+  try {
+    const db = new DatabaseSync(SESSIONS_DB, { open: true });
+    try {
+      const orig = db.prepare("SELECT summary, workspace, mode FROM sessions WHERE id = ?").get(sessionId) as any;
+      if (!orig) return null;
+      const newId = crypto.randomUUID?.() || require("crypto").randomUUID();
+      const now = Date.now();
+      db.prepare("INSERT INTO sessions (id, summary, workspace, mode, started_at, ended_at) VALUES (?, ?, ?, ?, ?, null)").run(
+        newId, orig.summary + " (fork)", orig.workspace, orig.mode, now
+      );
+      const turns = db.prepare("SELECT role, content FROM turns WHERE session_id = ? ORDER BY ts ASC").all(sessionId) as Array<{ role: string; content: string }>;
+      const insert = db.prepare("INSERT INTO turns (id, session_id, ts, role, content) VALUES (?, ?, ?, ?, ?)");
+      for (const t of turns) {
+        insert.run(require("crypto").randomUUID(), newId, Date.now(), t.role, t.content);
+      }
+      return { id: newId, startedAt: now, summary: orig.summary + " (fork)", workspace: orig.workspace, mode: orig.mode };
+    } finally { db.close(); }
+  } catch (e) { console.error("fork error", e); return null; }
+});
+
 ipcMain.handle("sessions:delete", (_event, sessionId: string) => {
   try {
     const db = new DatabaseSync(SESSIONS_DB, { open: true });
@@ -323,7 +418,8 @@ ipcMain.handle("sessions:create", (_event, summary: string, workspace: string, m
 const SESSION_FILES_DIR = path.join(SHMAKK_DIR, "session-files");
 
 ipcMain.handle("session-files:list", (_event, sessionId: string) => {
-  const dir = path.join(SESSION_FILES_DIR, sessionId);
+  const dir = resolveInsideRoot(SESSION_FILES_DIR, sessionId);
+  if (!dir) return { files: [] };
   if (!fs.existsSync(dir)) return { files: [] };
   const files: Array<{ name: string; size: number }> = [];
   const entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -339,28 +435,32 @@ ipcMain.handle("session-files:list", (_event, sessionId: string) => {
 });
 
 ipcMain.handle("session-files:read", (_event, sessionId: string, fileName: string) => {
-  const filePath = path.join(SESSION_FILES_DIR, sessionId, fileName);
-  if (!filePath.startsWith(path.join(SESSION_FILES_DIR, sessionId))) return null;
+  const sessionDir = resolveInsideRoot(SESSION_FILES_DIR, sessionId);
+  const filePath = sessionDir ? resolveInsideRoot(sessionDir, fileName) : null;
+  if (!filePath) return null;
   if (!fs.existsSync(filePath)) return null;
   return fs.readFileSync(filePath, "utf-8");
 });
 
 ipcMain.handle("session-files:saveCopy", (_event, sessionId: string, fileName: string, content: string) => {
-  const dir = path.join(SESSION_FILES_DIR, sessionId);
+  const dir = resolveInsideRoot(SESSION_FILES_DIR, sessionId);
+  if (!dir) return { path: "" };
   fs.mkdirSync(dir, { recursive: true });
-  const safeName = fileName.replace(/[<>:"/\\|?*]/g, "_");
+  const safeName = safeFileName(fileName);
   const filePath = path.join(dir, safeName);
   fs.writeFileSync(filePath, content, "utf-8");
   return { path: filePath };
 });
 
 ipcMain.handle("session-files:promoteToArtifacts", (_event, sessionId: string, fileName: string) => {
-  const srcPath = path.join(SESSION_FILES_DIR, sessionId, fileName);
-  if (!srcPath.startsWith(path.join(SESSION_FILES_DIR, sessionId))) return false;
+  const sessionDir = resolveInsideRoot(SESSION_FILES_DIR, sessionId);
+  const srcPath = sessionDir ? resolveInsideRoot(sessionDir, fileName) : null;
+  if (!srcPath) return false;
   if (!fs.existsSync(srcPath)) return false;
   const artifactsDir = path.join(SHMAKK_DIR, "artifacts");
   fs.mkdirSync(artifactsDir, { recursive: true });
-  const destPath = path.join(artifactsDir, fileName);
+  const destPath = resolveInsideRoot(artifactsDir, safeFileName(fileName));
+  if (!destPath) return false;
   fs.copyFileSync(srcPath, destPath);
   return true;
 });
@@ -410,6 +510,130 @@ ipcMain.handle("sessions:addTurn", (_event, sessionId: string, role: string, con
   }
 });
 
+// ── Projects ──────────────────────────────────────────────────────────────
+
+// Initialize projects tables
+const initProjectsDb = () => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS projects (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT DEFAULT '',
+        rules TEXT DEFAULT '',
+        settings_json TEXT DEFAULT '{}',
+        created_at INTEGER DEFAULT (unixepoch())
+      );
+      CREATE TABLE IF NOT EXISTS project_sessions (
+        project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        PRIMARY KEY (project_id, session_id)
+      );
+    `);
+  } finally { db.close(); }
+};
+initProjectsDb();
+
+ipcMain.handle("projects:list", () => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    const rows = db.prepare("SELECT id, name, description, rules, settings_json, created_at FROM projects ORDER BY created_at DESC").all() as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r.id as string, name: r.name as string, description: r.description as string,
+      rules: r.rules as string, settings: parseSettings(r.settings_json),
+      createdAt: r.created_at as number,
+    }));
+  } finally { db.close(); }
+});
+
+ipcMain.handle("projects:create", (_e, name: string, description?: string) => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    const id = require("crypto").randomUUID();
+    const createdAt = Date.now();
+    const settings = defaultProjectSettings();
+    db.prepare("INSERT INTO projects (id, name, description, settings_json, created_at) VALUES (?, ?, ?, ?, ?)").run(id, name, description || "", JSON.stringify(settings), createdAt);
+    return { id, name, description: description || "", rules: "", settings, createdAt };
+  } finally { db.close(); }
+});
+
+ipcMain.handle("projects:update", (_e, id: string, data: { name?: string; description?: string; rules?: string; settings?: Record<string, unknown> }) => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    if (data.name) db.prepare("UPDATE projects SET name = ? WHERE id = ?").run(data.name, id);
+    if (data.description !== undefined) db.prepare("UPDATE projects SET description = ? WHERE id = ?").run(data.description, id);
+    if (data.rules !== undefined) db.prepare("UPDATE projects SET rules = ? WHERE id = ?").run(data.rules, id);
+    if (data.settings) {
+      const row = db.prepare("SELECT settings_json FROM projects WHERE id = ?").get(id) as { settings_json?: string } | undefined;
+      const merged = defaultProjectSettings({ ...parseSettings(row?.settings_json), ...data.settings });
+      db.prepare("UPDATE projects SET settings_json = ? WHERE id = ?").run(JSON.stringify(merged), id);
+    }
+    return true;
+  } finally { db.close(); }
+});
+
+ipcMain.handle("projects:delete", (_e, id: string) => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    db.prepare("DELETE FROM project_sessions WHERE project_id = ?").run(id);
+    db.prepare("DELETE FROM projects WHERE id = ?").run(id);
+    return true;
+  } finally { db.close(); }
+});
+
+ipcMain.handle("projects:addSession", (_e, projectId: string, sessionId: string) => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    db.prepare("INSERT OR IGNORE INTO project_sessions (project_id, session_id) VALUES (?, ?)").run(projectId, sessionId);
+    return true;
+  } finally { db.close(); }
+});
+
+ipcMain.handle("projects:removeSession", (_e, projectId: string, sessionId: string) => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    db.prepare("DELETE FROM project_sessions WHERE project_id = ? AND session_id = ?").run(projectId, sessionId);
+    return true;
+  } finally { db.close(); }
+});
+
+ipcMain.handle("projects:getSessions", (_e, projectId: string) => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    const rows = db.prepare(`
+      SELECT s.id, s.started_at, s.ended_at, s.workspace, s.summary, s.mode,
+        (SELECT COUNT(*) FROM turns t WHERE t.session_id = s.id) as turn_count
+      FROM sessions s JOIN project_sessions ps ON s.id = ps.session_id
+      WHERE ps.project_id = ? ORDER BY s.started_at DESC
+    `).all(projectId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r.id, startedAt: r.started_at, endedAt: r.ended_at,
+      workspace: r.workspace, summary: r.summary, turnCount: r.turn_count as number,
+      mode: r.mode as string,
+    }));
+  } finally { db.close(); }
+});
+
+ipcMain.handle("projects:getForSession", (_e, sessionId: string) => {
+  const db = new DatabaseSync(SESSIONS_DB, { open: true });
+  try {
+    const rows = db.prepare(`
+      SELECT p.id, p.name, p.description, p.rules, p.settings_json, p.created_at
+      FROM projects p JOIN project_sessions ps ON p.id = ps.project_id
+      WHERE ps.session_id = ? ORDER BY p.created_at DESC
+    `).all(sessionId) as Array<Record<string, unknown>>;
+    return rows.map((r) => ({
+      id: r.id as string,
+      name: r.name as string,
+      description: r.description as string,
+      rules: r.rules as string,
+      settings: parseSettings(r.settings_json),
+      createdAt: r.created_at as number,
+    }));
+  } finally { db.close(); }
+});
+
 // ── Skills ────────────────────────────────────────────────────────────────
 
 ipcMain.handle("skills:list", () => {
@@ -421,6 +645,24 @@ ipcMain.handle("skills:list", () => {
   const seen = new Set<string>();
   const skills: Array<Record<string, unknown>> = [];
 
+  const addSkill = (skillName: string, filePath: string) => {
+    if (seen.has(skillName)) return;
+    seen.add(skillName);
+    const regEntry = regSkills[skillName];
+    const meta = readSkillMetadata(filePath, skillName);
+    skills.push({
+      id: skillName,
+      name: meta.name,
+      version: regEntry?.version || "1",
+      author: (regEntry?.author as string) || "shmakk",
+      description: (regEntry?.description as string) || meta.description,
+      category: (regEntry?.category as string) || guessCategory(`${skillName} ${meta.description}`),
+      installed: true,
+      enabled: regEntry ? regEntry.active === true : false,
+      source: regEntry?.source || filePath,
+    });
+  };
+
   if (fs.existsSync(SKILLS_DIR)) {
     const walkSkills = (dir: string, prefix = "") => {
       let entries: fs.Dirent[];
@@ -431,24 +673,15 @@ ipcMain.handle("skills:list", () => {
       }
       for (const entry of entries) {
         if (entry.isDirectory()) {
-          walkSkills(path.join(dir, entry.name), entry.name + "/");
+          const skillFile = path.join(dir, entry.name, "SKILL.md");
+          if (fs.existsSync(skillFile)) {
+            addSkill(prefix + entry.name, skillFile);
+          }
+          walkSkills(path.join(dir, entry.name), prefix + entry.name + "/");
         } else if (entry.name.endsWith(".md")) {
           const skillName = prefix + entry.name.replace(/\.md$/, "");
-          if (seen.has(skillName)) continue;
-          seen.add(skillName);
-          const regEntry = regSkills[skillName];
-          const readmePath = path.join(dir, entry.name);
-          skills.push({
-            id: skillName,
-            name: skillName,
-            version: regEntry?.version || "1",
-            author: "shmakk",
-            description: "",
-            category: guessCategory(skillName),
-            installed: true,
-            enabled: regEntry ? regEntry.active === true : false,
-            source: regEntry?.source || readmePath,
-          });
+          if (entry.name === "SKILL.md" && prefix) continue;
+          addSkill(skillName, path.join(dir, entry.name));
         }
       }
     };
@@ -473,6 +706,21 @@ ipcMain.handle("skills:list", () => {
 
   return skills;
 });
+
+function readSkillMetadata(filePath: string, fallbackName: string): { name: string; description: string } {
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const heading = lines.find((line) => line.startsWith("# "));
+    const description = lines.find((line) => !line.startsWith("#") && !line.startsWith("---")) || "";
+    return {
+      name: heading ? heading.replace(/^#\s+/, "").trim() : fallbackName,
+      description: description.slice(0, 220),
+    };
+  } catch {
+    return { name: fallbackName, description: "" };
+  }
+}
 
 ipcMain.handle("skills:read", (_event, skillId: string) => {
   const registry = readJsonSafe(SKILLS_REGISTRY_JSON);
@@ -514,17 +762,31 @@ function guessCategory(name: string): string {
 // ── Skills: toggle ────────────────────────────────────────────────────────
 
 ipcMain.handle("skills:toggle", (_event, skillId: string, enabled: boolean) => {
-  const registry = readJsonSafe(SKILLS_REGISTRY_JSON);
-  if (!registry || !registry.skills) return false;
+  const registry = readJsonSafe(SKILLS_REGISTRY_JSON) || {};
+  if (!registry.skills || typeof registry.skills !== "object") {
+    registry.skills = {};
+  }
 
   const skills = registry.skills as Record<string, Record<string, unknown>>;
-  if (skills[skillId]) {
+  if (!skills[skillId]) {
+    skills[skillId] = {
+      active: enabled,
+      source: findSkillSource(skillId) || "",
+      version: "1",
+    };
+  } else {
     skills[skillId].active = enabled;
-    writeJsonSafe(SKILLS_REGISTRY_JSON, registry);
-    return true;
   }
-  return false;
+  return writeJsonSafe(SKILLS_REGISTRY_JSON, registry);
 });
+
+function findSkillSource(skillId: string): string | null {
+  const direct = path.join(SKILLS_DIR, `${skillId}.md`);
+  const nested = path.join(SKILLS_DIR, skillId, "SKILL.md");
+  if (fs.existsSync(nested)) return nested;
+  if (fs.existsSync(direct)) return direct;
+  return null;
+}
 
 // ── Rules ─────────────────────────────────────────────────────────────────
 
@@ -641,14 +903,15 @@ function seedShmakkEnv() {
 
 seedShmakkEnv();
 
-const SHMAKK_SRC = path.join(__dirname, "..", "shmakk", "src");
+const SHMAKK_BASE_DIR = resolveShmakkBaseDir();
+const SHMAKK_SRC = path.join(SHMAKK_BASE_DIR, "src");
 let runAgent: Function | null = null;
 let clearTaskJournal: Function | null = null;
 let isConfigured: (() => boolean) | null = null;
 
 try {
   // Add shmakk's node_modules to the resolution path so it finds 'openai'
-  const shmakkNodeModules = path.join(__dirname, "..", "shmakk", "node_modules");
+  const shmakkNodeModules = path.join(SHMAKK_BASE_DIR, "node_modules");
   if (fs.existsSync(shmakkNodeModules)) {
     (module.paths as string[]).unshift(shmakkNodeModules);
   }
@@ -2395,28 +2658,37 @@ ipcMain.handle("design:generate", async (_event, prompt: string, designType: str
   if (!runAgent) return { error: "Agent not available" };
 
   const typeHints: Record<string, string> = {
+    custom: "Create a design that follows the user's prompt and preserves the existing layout and visual direction when the prompt is a revision. Keep the output focused and avoid introducing an unrelated page type unless the prompt clearly asks for one.",
+    // Renamed types (v2 DesignView)
     dashboard: "Create a dashboard layout with sidebar navigation, header stats cards, and a main content area with charts/tables. Use a professional data-visualization color palette.",
+    landing: "Create a modern SaaS landing page with hero section, feature grid, testimonials, pricing cards, and a CTA footer. Use clean typography and generous whitespace.",
+    page: "Create a complete full-page website design with navigation, multiple sections, and a footer. Think through the full user journey.",
+    // Legacy names (backward compatible)
     "landing-page": "Create a modern SaaS landing page with hero section, feature grid, testimonials, pricing cards, and a CTA footer. Use clean typography and generous whitespace.",
     "mobile-app": "Create a mobile app screen design (375px width) with a top navigation bar, scrollable content area, and bottom tab bar. Use mobile-friendly touch targets (min 44px).",
+    "full-page": "Create a complete full-page website design with navigation, multiple sections, and a footer. Think through the full user journey.",
+    // Unchanged types
     presentation: "Create presentation slides with bold headings, supporting points, and visual elements. Use a slide-by-slide layout with consistent branding.",
     form: "Create a form layout with labeled inputs, validation states, checkboxes/radios, and a submit button. Use clean spacing and accessible labels.",
     component: "Create a reusable UI component with hover states, focus states, and variants. Include a usage example showing the component in context.",
-    "full-page": "Create a complete full-page website design with navigation, multiple sections, and a footer. Think through the full user journey.",
     wireframe: "Create a low-fidelity wireframe with placeholder boxes, lorem ipsum text, and basic layout structure. Focus on information architecture and flow.",
   };
 
-  const typeHint = typeHints[designType] || typeHints["landing-page"];
+  const typeHint = typeHints[designType] || typeHints.custom;
 
-  const systemPrompt = `You are a senior UI/UX designer. Generate a single, complete, self-contained HTML document inside one \`\`\`html code block. Rules:
+  const systemPrompt = `You are a senior UI/UX designer. Your ONLY job is to output a single, complete, self-contained HTML document. Do NOT explain, plan, describe, or use any tools. Rules:
+
+- Output the HTML immediately inside one \`\`\`html code block — nothing before or after
 - Use modern CSS (Grid, Flexbox, custom properties)
-- Clean, cohesive color palette with CSS variables
-- Responsive design
-- Subtle animations/transitions where appropriate
+- Clean, cohesive color palette defined as CSS custom properties on :root
+- Responsive design (mobile-first where appropriate)
+- Subtle animations/transitions on interactive elements
 - Include all CSS in a <style> tag, no external files
 - Use semantic HTML5 elements
 - Make it visually polished and production-ready
 - ${typeHint}
-Output ONLY the HTML — no explanations before or after the code block.`;
+
+Begin now. Output ONLY the \`\`\`html code block.`;
 
   const abortController = new AbortController();
   let fullHtml = "";
@@ -2451,12 +2723,27 @@ Output ONLY the HTML — no explanations before or after the code block.`;
       mcpManager: null,
     });
 
-    // Extract HTML from response
-    const reply = Array.isArray(result) && result.length > 0
-      ? (result[result.length - 1] as { content?: string })?.content || ""
-      : "";
-    const htmlMatch = /```html\s*\n([\s\S]*?)```/i.exec(reply);
-    const html = htmlMatch ? htmlMatch[1].trim() : reply.trim();
+    // Extract HTML from response — search all assistant messages, not just the last one.
+    // The agent may have used tools before producing the final HTML output.
+    let html = "";
+    if (Array.isArray(result)) {
+      for (let i = result.length - 1; i >= 0; i--) {
+        const msg = result[i] as { role?: string; content?: string } | undefined;
+        if (!msg || msg.role !== "assistant" || !msg.content) continue;
+        const htmlMatch = /```html\s*\n([\s\S]*?)```/i.exec(msg.content);
+        if (htmlMatch) {
+          html = htmlMatch[1].trim();
+          break;
+        }
+      }
+    }
+
+    // Validate that the extracted content looks like HTML
+    if (!html || !/<(html|body|div|head|style|script|meta|link|span|p|h[1-6]|section|header|nav|main|footer|article|table|form|input|button|a|img|svg|canvas|ul|ol|li)/i.test(html)) {
+      const errMsg = "Agent did not produce valid HTML. Try rephrasing your prompt or selecting a different design type.";
+      sendToRenderer("design:token", { text: "", done: true, error: errMsg });
+      return { error: errMsg };
+    }
 
     sendToRenderer("design:token", { text: "", done: true, html });
     return { ok: true, html };
@@ -2474,15 +2761,27 @@ Output ONLY the HTML — no explanations before or after the code block.`;
 // ── Artifacts ──────────────────────────────────────────────────────────
 
 const ARTIFACTS_DIR = path.join(SHMAKK_DIR, "artifacts");
+const PROJECT_ARTIFACTS_DIR = path.join(SHMAKK_DIR, "project-artifacts");
 
-ipcMain.handle("artifacts:list", () => {
-  if (!fs.existsSync(ARTIFACTS_DIR)) return { files: [] };
+type ArtifactScope = { type?: "global" | "project"; projectId?: string };
+
+function artifactRoot(scope?: ArtifactScope): string | null {
+  if (scope?.type === "project") {
+    if (!scope.projectId) return null;
+    return resolveInsideRoot(PROJECT_ARTIFACTS_DIR, scope.projectId);
+  }
+  return ARTIFACTS_DIR;
+}
+
+ipcMain.handle("artifacts:list", (_event, scope?: ArtifactScope) => {
+  const root = artifactRoot(scope);
+  if (!root || !fs.existsSync(root)) return { files: [] };
   const files: Array<{ name: string; size: number; mtime: number }> = [];
-  const entries = fs.readdirSync(ARTIFACTS_DIR, { withFileTypes: true });
+  const entries = fs.readdirSync(root, { withFileTypes: true });
   for (const e of entries) {
     if (e.isFile()) {
       try {
-        const st = fs.statSync(path.join(ARTIFACTS_DIR, e.name));
+        const st = fs.statSync(path.join(root, e.name));
         files.push({ name: e.name, size: st.size, mtime: st.mtimeMs });
       } catch { /* skip */ }
     }
@@ -2491,29 +2790,43 @@ ipcMain.handle("artifacts:list", () => {
   return { files };
 });
 
-ipcMain.handle("artifacts:read", (_event, fileName: string) => {
-  const safeName = fileName.replace(/[<>:"/\\|?*]/g, "_");
-  const p = path.join(ARTIFACTS_DIR, safeName);
-  if (!p.startsWith(ARTIFACTS_DIR) || !fs.existsSync(p)) return null;
-  return { content: fs.readFileSync(p, "utf-8"), name: safeName };
+ipcMain.handle("artifacts:read", (_event, fileName: string, scope?: ArtifactScope) => {
+  const root = artifactRoot(scope);
+  const p = root ? resolveInsideRoot(root, safeFileName(fileName)) : null;
+  if (!p || !fs.existsSync(p)) return null;
+  return { content: fs.readFileSync(p, "utf-8"), name: path.basename(p) };
 });
 
-ipcMain.handle("artifacts:delete", (_event, fileName: string) => {
-  const safeName = fileName.replace(/[<>:"/\\|?*]/g, "_");
-  const p = path.join(ARTIFACTS_DIR, safeName);
-  if (!p.startsWith(ARTIFACTS_DIR) || !fs.existsSync(p)) return false;
+ipcMain.handle("artifacts:delete", (_event, fileName: string, scope?: ArtifactScope) => {
+  const root = artifactRoot(scope);
+  const p = root ? resolveInsideRoot(root, safeFileName(fileName)) : null;
+  if (!p || !fs.existsSync(p)) return false;
   fs.unlinkSync(p);
   return true;
 });
 
+ipcMain.handle("artifacts:save", (_event, fileName: string, content: string, scope?: ArtifactScope) => {
+  const root = artifactRoot(scope);
+  if (!root) return { path: "" };
+  fs.mkdirSync(root, { recursive: true });
+  const p = resolveInsideRoot(root, safeFileName(fileName));
+  if (!p) return { path: "" };
+  fs.writeFileSync(p, content, "utf-8");
+  return { path: p };
+});
+
 // ── App lifecycle ─────────────────────────────────────────────────────────
 
-app.whenReady().then(createWindow);
+if (IS_CLI_MODE) {
+  app.whenReady().then(runCliMode);
+} else {
+  app.whenReady().then(createWindow);
 
-app.on("window-all-closed", () => {
-  if (process.platform !== "darwin") app.quit();
-});
+  app.on("window-all-closed", () => {
+    if (process.platform !== "darwin") app.quit();
+  });
 
-app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) createWindow();
-});
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length === 0) createWindow();
+  });
+}

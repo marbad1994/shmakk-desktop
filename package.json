@@ -2,13 +2,15 @@
   "name": "shmakk-desktop",
   "version": "0.1.0",
   "description": "shmakk AI coding assistant — desktop client",
+  "author": "Marcus <marcus@users.noreply.github.com>",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "electron:dev": "vite",
-    "electron:build": "vite build && electron-builder",
+    "package:linux": "npm run build && electron-builder --linux AppImage deb",
+    "electron:build": "npm run build && electron-builder",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src/"
   },
@@ -22,6 +24,7 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.6.0",
     "remark-gfm": "^4.0.1",
+    "shmakk": "^1.2.0",
     "zustand": "^5.0.0"
   },
   "devDependencies": {
@@ -41,12 +44,24 @@
     "directories": {
       "output": "release"
     },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
     "linux": {
+      "executableName": "shmakk-desktop",
       "target": [
         "AppImage",
         "deb"
       ],
-      "category": "Development"
+      "maintainer": "Marcus <marcus@users.noreply.github.com>",
+      "category": "Development",
+      "artifactName": "shmakk-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "afterInstall": "build/deb/after-install.sh",
+      "afterRemove": "build/deb/after-remove.sh"
     },
     "mac": {
       "target": [

@@ -2,6 +2,8 @@ import { useEffect } from "react";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AppShell } from "./views/AppShell";
 import { ChatView } from "./views/ChatView";
+import { CoworkView } from "./views/CoworkView";
+import { DesignView } from "./views/DesignView";
 import { CodeView } from "./views/CodeView";
 import { SettingsView } from "./views/SettingsView";
 import { SessionSearchView } from "./views/SessionSearchView";
@@ -10,13 +12,14 @@ import { SkillsBrowserView } from "./views/SkillsBrowserView";
 import { EditViewerView } from "./views/EditViewerView";
 import { WorkflowsView } from "./views/WorkflowsView";
 import { PlansTasksView } from "./views/PlansTasksView";
-import { CoworkView } from "./views/CoworkView";
-import { DesignView } from "./views/DesignView";
+import { ProjectsView } from "./views/ProjectsView";
 import { ArtifactsView } from "./views/ArtifactsView";
+import { ToolsView } from "./views/ToolsView";
 import { useChatStore } from "./stores/chatStore";
 import { useProjectStore } from "./stores/projectStore";
 import { useSkillsStore } from "./stores/skillsStore";
 import { useSettingsStore } from "./stores/settingsStore";
+import "./styles/modes.css";
 
 export function App() {
   const chatLoaded = useChatStore((s) => s.loaded);
@@ -38,6 +41,8 @@ export function App() {
         <Route element={<AppShell />}>
           <Route index element={<ChatView />} />
           <Route path="chat" element={<ChatView />} />
+          <Route path="cowork" element={<CoworkView />} />
+          <Route path="design" element={<DesignView />} />
           <Route path="code" element={<CodeView />} />
           <Route path="settings" element={<SettingsView />} />
           <Route path="sessions" element={<SessionSearchView />} />
@@ -46,9 +51,9 @@ export function App() {
           <Route path="edit" element={<EditViewerView />} />
           <Route path="workflows" element={<WorkflowsView />} />
           <Route path="plans" element={<PlansTasksView />} />
-          <Route path="cowork" element={<CoworkView />} />
-          <Route path="design" element={<DesignView />} />
+          <Route path="projects" element={<ProjectsView />} />
           <Route path="artifacts" element={<ArtifactsView />} />
+          <Route path="tools" element={<ToolsView />} />
         </Route>
       </Routes>
     </BrowserRouter>

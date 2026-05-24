@@ -18,7 +18,7 @@ interface SkillsStore {
   loaded: boolean;
   loadSkills: () => Promise<void>;
   setSearch: (query: string) => void;
-  toggleEnabled: (id: string) => void;
+  toggleEnabled: (id: string) => Promise<void>;
 }
 
 export const useSkillsStore = create<SkillsStore>((set, get) => ({
@@ -64,7 +64,8 @@ export const useSkillsStore = create<SkillsStore>((set, get) => ({
 
     // Persist via IPC
     try {
-      await window.api.skills.toggle(id, newEnabled);
+      const ok = await window.api.skills.toggle(id, newEnabled);
+      if (!ok) throw new Error("Skill toggle was not persisted");
     } catch (err) {
       console.error("Failed to toggle skill:", err);
       // Revert

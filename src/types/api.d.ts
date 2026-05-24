@@ -5,6 +5,7 @@ export interface SessionSummary {
   workspace: string;
   summary: string;
   turnCount: number;
+  mode?: string;
 }
 
 export interface SessionDetail extends SessionSummary {
@@ -114,15 +115,17 @@ export interface STSState {
 }
 
 type Unsubscribe = () => void;
+export type ArtifactScope = { type?: "global" | "project"; projectId?: string };
 
 export interface Api {
   commands: {
     list: () => Promise<{ commands: Array<{ name: string; plugin: string; description: string }> }>;
   };
   artifacts: {
-    list: () => Promise<{ files: Array<{ name: string; size: number; mtime: number }> }>;
-    read: (fileName: string) => Promise<{ content: string; name: string } | null>;
-    delete: (fileName: string) => Promise<boolean>;
+    list: (scope?: ArtifactScope) => Promise<{ files: Array<{ name: string; size: number; mtime: number }> }>;
+    read: (fileName: string, scope?: ArtifactScope) => Promise<{ content: string; name: string } | null>;
+    delete: (fileName: string, scope?: ArtifactScope) => Promise<boolean>;
+    save: (fileName: string, content: string, scope?: ArtifactScope) => Promise<{ path: string }>;
   };
   design: {
     generate: (prompt: string, designType: string) => Promise<{ ok?: boolean; html?: string; error?: string }>;
@@ -180,6 +183,8 @@ export interface Api {
     get: (sessionId: string) => Promise<SessionDetail | null>;
     current: () => Promise<{ id: string; startedAt: number; summary: string } | null>;
     delete: (sessionId: string) => Promise<boolean>;
+    rename: (sessionId: string, newSummary: string) => Promise<boolean>;
+    fork: (sessionId: string) => Promise<{ id: string; startedAt: number; summary: string; workspace: string; mode?: string } | null>;
     create: (summary: string, workspace: string, mode?: string) => Promise<{ id: string; startedAt: number; summary: string; workspace: string; mode?: string } | null>;
     addTurn: (sessionId: string, role: string, content: string) => Promise<boolean>;
   };
@@ -236,6 +241,16 @@ export interface Api {
     delete: (id: string) => Promise<boolean>;
     toggle: (id: string, enabled: boolean) => Promise<boolean>;
     update: (id: string, data: { name?: string; when?: string; prompt?: string; profile?: string }) => Promise<boolean>;
+  };
+  projects: {
+    list: () => Promise<Array<{ id: string; name: string; description: string; rules: string; settings: Record<string, unknown>; createdAt: number }>>;
+    create: (name: string, description?: string) => Promise<{ id: string; name: string; description: string; rules: string; settings: Record<string, unknown>; createdAt: number }>;
+    update: (id: string, data: { name?: string; description?: string; rules?: string; settings?: Record<string, unknown> }) => Promise<boolean>;
+    delete: (id: string) => Promise<boolean>;
+    addSession: (projectId: string, sessionId: string) => Promise<boolean>;
+    removeSession: (projectId: string, sessionId: string) => Promise<boolean>;
+    getSessions: (projectId: string) => Promise<Array<{ id: string; startedAt: number; endedAt: number | null; workspace: string; summary: string; turnCount: number; mode: string }>>;
+    getForSession: (sessionId: string) => Promise<Array<{ id: string; name: string; description: string; rules: string; settings: Record<string, unknown>; createdAt: number }>>;
   };
   voice: {
     listVoices: () => Promise<{ voices?: Array<{ id: string; name: string; language: string; gender: string }>; error?: string }>;
