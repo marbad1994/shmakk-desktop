@@ -54,3 +54,5 @@ jobs:
             release/*.AppImage
             release/*.deb
             release/SHA256SUMS
+        env: 
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
