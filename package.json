@@ -2,7 +2,7 @@
   "name": "shmakk-desktop",
   "version": "0.1.0",
   "description": "shmakk AI coding assistant — desktop client",
-  "author": "Marcus <marcus@users.noreply.github.com>",
+  "author": "Marcus Bader <marcus.e.r.bader@gmail.com>",
   "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
@@ -55,7 +55,7 @@
         "AppImage",
         "deb"
       ],
-      "maintainer": "Marcus <marcus@users.noreply.github.com>",
+      "maintainer": "Marcus Bader <marcus.e.r.bader@gmail.com>",
       "category": "Development",
       "artifactName": "shmakk-${version}-${arch}.${ext}"
     },

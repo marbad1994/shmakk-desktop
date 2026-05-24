@@ -1,5 +1,8 @@
 PLAN.md
 build/
+!build/
+!build/deb/
+!build/deb/*.sh
 info.md
 .shmakk/
 .claude/
