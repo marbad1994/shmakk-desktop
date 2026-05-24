@@ -17,6 +17,19 @@ const ENDPOINTS_JSON = path.join(SHMAKK_DIR, "endpoints.json");
 const RULES_MD = path.join(SHMAKK_DIR, "rules.md");
 const SKILLS_REGISTRY_JSON = path.join(SHMAKK_DIR, "skills-registry.json");
 
+function ensureAppStorage() {
+  for (const dir of [
+    SHMAKK_DIR,
+    SKILLS_DIR,
+    PLUGINS_DIR,
+    path.join(SHMAKK_DIR, "session-files"),
+    path.join(SHMAKK_DIR, "artifacts"),
+    path.join(SHMAKK_DIR, "project-artifacts"),
+  ]) {
+    fs.mkdirSync(dir, { recursive: true });
+  }
+}
+
 // ── Window ────────────────────────────────────────────────────────────────
 
 function createWindow() {
@@ -65,6 +78,7 @@ function readJsonSafe(filePath: string): Record<string, unknown> | null {
 
 function writeJsonSafe(filePath: string, data: unknown): boolean {
   try {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
     fs.writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
     return true;
   } catch {
@@ -258,6 +272,7 @@ ipcMain.handle("dialog:selectDirectory", async () => {
 
 function openSessionsDb() {
   try {
+    ensureAppStorage();
     return new DatabaseSync(SESSIONS_DB, { open: true, readOnly: true });
   } catch {
     return null;
@@ -514,9 +529,25 @@ ipcMain.handle("sessions:addTurn", (_event, sessionId: string, role: string, con
 
 // Initialize projects tables
 const initProjectsDb = () => {
+  ensureAppStorage();
   const db = new DatabaseSync(SESSIONS_DB, { open: true });
   try {
     db.exec(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id TEXT PRIMARY KEY,
+        started_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        workspace TEXT DEFAULT '',
+        summary TEXT DEFAULT '',
+        mode TEXT DEFAULT 'chat'
+      );
+      CREATE TABLE IF NOT EXISTS turns (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+        ts INTEGER NOT NULL,
+        role TEXT NOT NULL,
+        content TEXT NOT NULL
+      );
       CREATE TABLE IF NOT EXISTS projects (
         id TEXT PRIMARY KEY,
         name TEXT NOT NULL,
