@@ -7,6 +7,8 @@ import { builtinModules } from "node:module";
 
 const electronExternals = [
   "electron",
+  "sqlite",
+  "node:sqlite",
   ...builtinModules,
   ...builtinModules.map((mod) => `node:${mod}`),
 ];
